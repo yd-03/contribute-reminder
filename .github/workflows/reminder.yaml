@@ -13,15 +13,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 現在のUTC日付を取得
           DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
+          # GitHubリポジトリの所有者のユーザー名を取得
           USERNAME="${{ github.repository_owner }}"
+          # GraphQLクエリを使用して、ユーザーのリポジトリとそのコミット履歴の合計数を取得
           QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } } }\"}"
 
+          # GitHub GraphQL APIにクエリを送信し、レスポンスを取得
           RESPONSE=$(curl -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
           echo "Response: $RESPONSE"
+          # jqを使用して、取得したJSONから全てのリポジトリのコミット数の合計を計算
+          # 'add // 0' は、何もコミットがなかった場合に0を返すためのもの
           TOTAL_COUNT=$(echo $RESPONSE | jq '[.data.user.repositories.edges[].node.ref.target.history.totalCount] | add // 0')
 
           echo "Total contributions: $TOTAL_COUNT"
+          # 環境変数に合計コミット数を設定し、後のステップで使用
           echo "CONTRIBUTIONS_COUNT=$TOTAL_COUNT" >> $GITHUB_ENV
 
       - name: Send LINE Notification if No Contributions
@@ -30,4 +37,5 @@ jobs:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
           MESSAGE: "まもなく今日が終わりますが、まだGitHubにコミットしていません！今すぐコミットしましょう！"
         run: |
+          # LINE Notify APIを使用して、設定されたメッセージをLINEに通知
           curl -X POST -H "Authorization: Bearer $LINE_TOKEN" -F "message=$MESSAGE" https://notify-api.line.me/api/notify
