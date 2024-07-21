@@ -21,13 +21,18 @@ jobs:
           QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } } }\"}"
 
           # GitHub GraphQL APIにクエリを送信し、レスポンスを取得
-          RESPONSE=$(curl -s -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
-          HTTP_STATUS=$(echo "$RESPONSE" | jq -r '. | if .errors then "error" else empty end')
-          RESPONSE_BODY=$(echo "$RESPONSE")
+          RESPONSE=$(curl -s -o response.json -w "%{http_code}" -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
+          HTTP_STATUS=$(tail -n1 <<< "$RESPONSE") # HTTPステータスコードを取得
+          RESPONSE_BODY=$(head -n -1 response.json) # レスポンスボディを取得
 
-          if [ "$HTTP_STATUS" == "error" ]; then
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Error: HTTP request failed with status $HTTP_STATUS"
+            exit 1
+          fi
+
+          # GraphQLレスポンス内のerrorsフィールドをチェック
+          if echo "$RESPONSE_BODY" | jq .errors | grep -q null; then
             echo "Error: GraphQL query failed"
-            echo "$RESPONSE_BODY" | jq .errors
             exit 1
           fi
 
