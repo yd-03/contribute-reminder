@@ -15,15 +15,13 @@ jobs:
         run: |
           DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
           USERNAME="${{ github.repository_owner }}"
-          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { contributionsCollection(from: \\\"$DATE\\\", to: \\\"$DATE\\\") { commitContributionsByRepository { repository { name, defaultBranchRef { name } } contributions(first: 100) { totalCount } } } } }\"}"
+          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } } }\"}"
 
           RESPONSE=$(curl -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
           echo "Response: $RESPONSE"
-          MAIN_COUNT=$(echo $RESPONSE | jq '[.data.user.contributionsCollection.commitContributionsByRepository[] | select(.repository.defaultBranchRef.name == "main") | .contributions.totalCount] | add // 0')
-          MASTER_COUNT=$(echo $RESPONSE | jq '[.data.user.contributionsCollection.commitContributionsByRepository[] | select(.repository.defaultBranchRef.name == "master") | .contributions.totalCount] | add // 0')
-          TOTAL_COUNT=$(($MAIN_COUNT + $MASTER_COUNT))
+          TOTAL_COUNT=$(echo $RESPONSE | jq '[.data.user.repositories.edges[].node.ref.target.history.totalCount] | add // 0')
 
-          echo "Total contributions to main and master: $TOTAL_COUNT"
+          echo "Total contributions: $TOTAL_COUNT"
           echo "CONTRIBUTIONS_COUNT=$TOTAL_COUNT" >> $GITHUB_ENV
 
       - name: Send LINE Notification if No Contributions
