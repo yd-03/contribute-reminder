@@ -18,27 +18,19 @@ jobs:
           # GitHubリポジトリの所有者のユーザー名を取得
           USERNAME="${{ github.repository_owner }}"
           # GraphQLクエリを使用して、ユーザーのリポジトリとそのコミット履歴の合計数を取得
-          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } }\"}"
+          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } } }\"}"
 
           # GitHub GraphQL APIにクエリを送信し、レスポンスを取得
           RESPONSE=$(curl -s -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
-          HTTP_STATUS=$(echo "$RESPONSE" | jq -r '.http_status' 2>/dev/null)
+          HTTP_STATUS=$(echo "$RESPONSE" | jq -r '. | if .errors then "error" else empty end')
+          RESPONSE_BODY=$(echo "$RESPONSE")
 
-          # GraphQLレスポンス内のerrorsフィールドをチェック
-          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
-          RESPONSE_BODY=$(<response.json)
-
-          # HTTPステータスコードのチェック
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "Error: HTTP request failed with status $HTTP_STATUS"
-            exit 1
-          fi
-
-          # GraphQLレスポンス内のerrorsフィールドをチェック
-          if echo "$RESPONSE_BODY" | jq .errors; then
+          if [ "$HTTP_STATUS" == "error" ]; then
             echo "Error: GraphQL query failed"
+            echo "$RESPONSE_BODY" | jq .errors
             exit 1
           fi
+
           # jqを使用して、取得したJSONから全てのリポジトリのコミット数の合計を計算
           TOTAL_COUNT=$(echo "$RESPONSE_BODY" | jq '[.data.user.repositories.edges[].node.ref.target.history.totalCount] | add // 0')
 
