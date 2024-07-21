@@ -18,14 +18,23 @@ jobs:
           # GitHubリポジトリの所有者のユーザー名を取得
           USERNAME="${{ github.repository_owner }}"
           # GraphQLクエリを使用して、ユーザーのリポジトリとそのコミット履歴の合計数を取得
-          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } } }\"}"
+          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE\\\") { totalCount } } } } } } } }\"}"
 
           # GitHub GraphQL APIにクエリを送信し、レスポンスを取得
-          RESPONSE=$(curl -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
-          echo "Response: $RESPONSE"
+          RESPONSE=$(curl -s -w "%{http_code}" -o response.json -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
+          HTTP_STATUS=$(tail -n1 response.json) # HTTPステータスコードを取得
+          RESPONSE_BODY=$(sed '$ d' response.json) # レスポンスボディを取得
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Error: HTTP request failed with status $HTTP_STATUS"
+            exit 1
+          fi
+          # GraphQLレスポンス内のerrorsフィールドをチェック
+          if echo "$RESPONSE_BODY" | jq .errors; then
+            echo "Error: GraphQL query failed"
+            exit 1
+          fi
           # jqを使用して、取得したJSONから全てのリポジトリのコミット数の合計を計算
-          # 'add // 0' は、何もコミットがなかった場合に0を返すためのもの
-          TOTAL_COUNT=$(echo $RESPONSE | jq '[.data.user.repositories.edges[].node.ref.target.history.totalCount] | add // 0')
+          TOTAL_COUNT=$(echo "$RESPONSE_BODY" | jq '[.data.user.repositories.edges[].node.ref.target.history.totalCount] | add // 0')
 
           echo "Total contributions: $TOTAL_COUNT"
           # 環境変数に合計コミット数を設定し、後のステップで使用
