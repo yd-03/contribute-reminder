@@ -8,6 +8,9 @@ jobs:
   check-and-notify:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
       - name: Check for Contributions on Main and Master Branches
         id: check_contributions
         env:
@@ -18,11 +21,13 @@ jobs:
           DATE_END=$(date -u +"%Y-%m-%dT23:59:59Z")
           # GitHubリポジトリの所有者のユーザー名を取得
           USERNAME="${{ github.repository_owner }}"
-          # GraphQLクエリを使用して、ユーザーのリポジトリとそのコミット履歴の合計数を取得
-          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: 100, affiliations: OWNER) { edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE_END\\\") { totalCount } } } } } } } } }\"}"
+
+          # GraphQLクエリを外部ファイルから読み込む
+          QUERY=$(cat query.graphql)
+          VARIABLES="{\"username\": \"$USERNAME\", \"date\": \"$DATE\", \"dateEnd\": \"$DATE_END\"}"
 
           # GitHub GraphQL APIにクエリを送信し、レスポンスを取得
-          RESPONSE=$(curl -s -w "%{http_code}" -o response.json -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
+          RESPONSE=$(curl -s -w "%{http_code}" -o response.json -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "{\"query\": \"$QUERY\", \"variables\": $VARIABLES}" https://api.github.com/graphql)
           HTTP_STATUS=$(tail -n1 <<< "$RESPONSE") # HTTPステータスコードを取得
           RESPONSE_BODY=$(cat response.json) # レスポンスボディを取得
 
