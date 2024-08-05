@@ -19,6 +19,8 @@ jobs:
           # GitHubリポジトリの所有者のユーザー名を取得
           USERNAME="${{ github.repository_owner }}"
 
+          echo "Checking contributions for user: $USERNAME from $DATE to $DATE_END"
+
           # GraphQLクエリを作成する関数
           create_query() {
             echo "{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: $1, after: $2, affiliations: OWNER) { pageInfo { hasNextPage, endCursor } edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE_END\\\") { totalCount } } } } } } } } }\"}"
@@ -34,7 +36,10 @@ jobs:
           while [ "$HAS_NEXT_PAGE" = true ]; do
             RESPONSE=$(curl -s -w "%{http_code}" -o response.json -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
             HTTP_STATUS=$(tail -n1 <<< "$RESPONSE")
-            RESPONSE_BODY=$(cat response.json)
+            RESPONSE_BODY=$(head -n -1 response.json)
+
+            echo "HTTP Status: $HTTP_STATUS"
+            echo "Response Body: $RESPONSE_BODY"
 
             if [ "$HTTP_STATUS" -ne 200 ]; then
               echo "Error: HTTP request failed with status $HTTP_STATUS"
@@ -53,7 +58,7 @@ jobs:
             END_CURSOR=$(echo "$RESPONSE_BODY" | jq -r .data.user.repositories.pageInfo.endCursor)
 
             if [ "$HAS_NEXT_PAGE" = true ]; then
-              QUERY=$(create_query 100 \"$END_CURSOR\")
+              QUERY=$(create_query 100 "$END_CURSOR")
             fi
           done
 
