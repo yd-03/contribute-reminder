@@ -8,7 +8,7 @@ jobs:
   check-and-notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for Contributions on Main and Master Branches
+      - name: Check for Contributions on All Branches
         id: check_contributions
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -23,7 +23,7 @@ jobs:
 
           # GraphQLクエリを作成する関数
           create_query() {
-            echo "{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: $1, after: $2, affiliations: OWNER) { pageInfo { hasNextPage, endCursor } edges { node { name, ref(qualifiedName: \\\"HEAD\\\") { target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE_END\\\") { totalCount } } } } } } } } }\"}"
+            echo "{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: $1, after: $2, affiliations: OWNER) { pageInfo { hasNextPage, endCursor } edges { node { name, refs(first: 100, refPrefix: \\\"refs/heads/\\\") { edges { node { name, target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE_END\\\") { totalCount } } } } } } } } } } }\"}"
           }
 
           # 初期クエリを設定
@@ -53,7 +53,8 @@ jobs:
               exit 1
             fi
 
-            TOTAL_COUNT=$(($TOTAL_COUNT + $(echo "$RESPONSE_BODY" | jq '[.data.user.repositories.edges[].node.ref.target.history.totalCount] | add // 0')))
+            # 各ブランチのコミット数を合計する
+            TOTAL_COUNT=$(($TOTAL_COUNT + $(echo "$RESPONSE_BODY" | jq '[.data.user.repositories.edges[].node.refs.edges[].node.target.history.totalCount] | add // 0')))
             HAS_NEXT_PAGE=$(echo "$RESPONSE_BODY" | jq .data.user.repositories.pageInfo.hasNextPage)
             END_CURSOR=$(echo "$RESPONSE_BODY" | jq -r .data.user.repositories.pageInfo.endCursor)
 
@@ -71,4 +72,4 @@ jobs:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
           MESSAGE: "まもなく今日が終わりますが、まだGitHubにコミットしていません！今すぐコミットしましょう！"
         run: |
-          curl -X POST -H "Authorization: Bearer $LINE_TOKEN" -F "message=$MESSAGE" https://notify-api.line.me/api/notify
+          curl -X POST -H "Authorization: Bearer
