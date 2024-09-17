@@ -23,7 +23,7 @@ jobs:
 
           # GraphQLクエリを作成する関数
           create_query() {
-            echo "{\"query\": \"query { user(login: \\\"$USERNAME\\\") { repositories(first: $1, after: $2, affiliations: OWNER) { pageInfo { hasNextPage, endCursor } edges { node { name, refs(first: 100, refPrefix: \\\"refs/heads/\\\") { edges { node { name, target { ... on Commit { history(since: \\\"$DATE\\\", until: \\\"$DATE_END\\\") { totalCount } } } } } } } } } } }\"}"
+            echo '{"query": "query { user(login: \"'"$USERNAME"'\") { repositories(first: '"$1"', after: '"$2"', affiliations: OWNER) { pageInfo { hasNextPage, endCursor } edges { node { name, refs(first: 100, refPrefix: \"refs/heads/\") { edges { node { name, target { ... on Commit { history(since: \"'"$DATE"'\", until: \"'"$DATE_END"'\") { totalCount } } } } } } } } } } }"}'
           }
 
           # 初期クエリを設定
