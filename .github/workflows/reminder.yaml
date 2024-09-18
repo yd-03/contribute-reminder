@@ -8,68 +8,28 @@ jobs:
   check-and-notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for Contributions on All Branches
+      - name: Check for Contributions on Main and Master Branches
         id: check_contributions
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 現在のUTC日付を取得
           DATE=$(date -u +"%Y-%m-%dT00:00:00Z")
-          DATE_END=$(date -u +"%Y-%m-%dT23:59:59Z")
-          # GitHubリポジトリの所有者のユーザー名を取得
           USERNAME="${{ github.repository_owner }}"
+          QUERY="{\"query\": \"query { user(login: \\\"$USERNAME\\\") { contributionsCollection(from: \\\"$DATE\\\", to: \\\"$DATE\\\") { commitContributionsByRepository { repository { name, defaultBranchRef { name } } contributions(first: 100) { totalCount } } } } }\"}"
 
-          echo "Checking contributions for user: $USERNAME from $DATE to $DATE_END"
+          RESPONSE=$(curl -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
+          echo "Response: $RESPONSE"
+          MAIN_COUNT=$(echo $RESPONSE | jq '[.data.user.contributionsCollection.commitContributionsByRepository[] | select(.repository.defaultBranchRef.name == "main") | .contributions.totalCount] | add // 0')
+          MASTER_COUNT=$(echo $RESPONSE | jq '[.data.user.contributionsCollection.commitContributionsByRepository[] | select(.repository.defaultBranchRef.name == "master") | .contributions.totalCount] | add // 0')
+          TOTAL_COUNT=$(($MAIN_COUNT + $MASTER_COUNT))
 
-          # GraphQLクエリを作成する関数
-          create_query() {
-            echo '{"query": "query { user(login: \"'"$USERNAME"'\") { repositories(first: '"$1"', after: '"$2"', affiliations: OWNER) { pageInfo { hasNextPage, endCursor } edges { node { name, refs(first: 100, refPrefix: \"refs/heads/\") { edges { node { name, target { ... on Commit { history(since: \"'"$DATE"'\", until: \"'"$DATE_END"'\") { totalCount } } } } } } } } } } }"}'
-          }
-
-          # 初期クエリを設定
-          QUERY=$(create_query 100 null)
-          TOTAL_COUNT=0
-          HAS_NEXT_PAGE=true
-          END_CURSOR=null
-
-          # ページネーションを考慮してリクエストを繰り返す
-          while [ "$HAS_NEXT_PAGE" = true ]; do
-            RESPONSE=$(curl -s -w "%{http_code}" -o response.json -H "Authorization: bearer $GITHUB_TOKEN" -H "Content-Type: application/json" -d "$QUERY" https://api.github.com/graphql)
-            HTTP_STATUS=$(tail -n1 <<< "$RESPONSE")
-            RESPONSE_BODY=$(head -n -1 response.json)
-
-            echo "HTTP Status: $HTTP_STATUS"
-            echo "Response Body: $RESPONSE_BODY"
-
-            if [ "$HTTP_STATUS" -ne 200 ]; then
-              echo "Error: HTTP request failed with status $HTTP_STATUS"
-              cat response.json
-              exit 1
-            fi
-
-            if echo "$RESPONSE_BODY" | jq .errors | grep -qv null; then
-              echo "Error: GraphQL query failed with errors"
-              echo "$RESPONSE_BODY" | jq .errors
-              exit 1
-            fi
-
-            # 各ブランチのコミット数を合計する
-            TOTAL_COUNT=$(($TOTAL_COUNT + $(echo "$RESPONSE_BODY" | jq '[.data.user.repositories.edges[].node.refs.edges[].node.target.history.totalCount] | add // 0')))
-            HAS_NEXT_PAGE=$(echo "$RESPONSE_BODY" | jq .data.user.repositories.pageInfo.hasNextPage)
-            END_CURSOR=$(echo "$RESPONSE_BODY" | jq -r .data.user.repositories.pageInfo.endCursor)
-
-            if [ "$HAS_NEXT_PAGE" = true ]; then
-              QUERY=$(create_query 100 "$END_CURSOR")
-            fi
-          done
-
-          echo "Total contributions: $TOTAL_COUNT"
+          echo "Total contributions to main and master: $TOTAL_COUNT"
           echo "CONTRIBUTIONS_COUNT=$TOTAL_COUNT" >> $GITHUB_ENV
 
       - name: Send LINE Notification if No Contributions
         if: env.CONTRIBUTIONS_COUNT == '0'
         env:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-          MESSAGE: "まもなく今日が終わりますが、まだGitHubにコミットしていません！今すぐコミットしましょう！"
+          MESSAGE: "まもなく今日が終わりますがまだGitHubの草が生えてません！今すぐ草を生やしましょう！"
         run: |
-          curl -X POST -H "Authorization: Bearer
+          curl -X POST -H "Authorization: Bearer $LINE_TOKEN" -F "message=$MESSAGE" https://notify-api.line.me/api/notify
